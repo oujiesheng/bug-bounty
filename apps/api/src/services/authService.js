@@ -1,23 +1,48 @@
-import { signAccessToken } from "../utils/jwt.js";
+import { signAccessToken, verifyAccessToken } from "../utils/jwt.js";
+
+const users = new Map();
 
 export async function registerUser(payload) {
-  // TODO: persist new user via Prisma
+  const id = `usr_${Date.now()}`;
+  const user = { id, email: payload.email, role: payload.role ?? "client" };
+  users.set(id, user);
   return {
-    id: `usr_${Date.now()}`,
-    email: payload.email,
-    role: payload.role,
-    token: signAccessToken({ sub: `usr_${Date.now()}`, role: payload.role })
+    ...user,
+    token: signAccessToken({ sub: id, role: user.role })
   };
 }
 
 export async function loginUser(payload) {
-  // TODO: verify password hash against stored user record
+  // Find user by email
+  let foundUser = null;
+  for (const user of users.values()) {
+    if (user.email === payload.email) {
+      foundUser = user;
+      break;
+    }
+  }
+
+  if (!foundUser) {
+    throw new Error("Invalid credentials");
+  }
+
   return {
-    email: payload.email,
-    token: signAccessToken({ sub: "usr_existing", role: "client" })
+    email: foundUser.email,
+    token: signAccessToken({ sub: foundUser.id, role: foundUser.role })
   };
 }
 
-export async function refreshToken() {
-  return { token: signAccessToken({ sub: "usr_existing", role: "client" }) };
+export async function refreshToken(authHeader) {
+  if (!authHeader?.startsWith("Bearer ")) {
+    throw new Error("Missing authorization header");
+  }
+
+  try {
+    const decoded = verifyAccessToken(authHeader.slice(7));
+    return {
+      token: signAccessToken({ sub: decoded.sub, role: decoded.role })
+    };
+  } catch {
+    throw new Error("Invalid token");
+  }
 }
